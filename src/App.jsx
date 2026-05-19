@@ -3,6 +3,7 @@ import {
   Plus, Trash2, Edit2, ChevronLeft, Dumbbell, Timer, History, Save, X, 
   ChevronRight, Activity, TrendingUp, Scale, ArrowUp, ArrowDown, Target 
 } from 'lucide-react'
+import { supabase } from './supabaseClient'
 import './App.css'
 
 const DAYS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
@@ -46,14 +47,28 @@ function UserSelection({ onSelect }) {
 }
 
 function DaySelection({ user, onSelect, onBack }) {
-  // Load stats to show exercise count per day
-  const getExerciseCount = (day) => {
-    const saved = localStorage.getItem(`workout_${user}_${day}`)
-    if (saved) {
-      return JSON.parse(saved).length
+  const [counts, setCounts] = useState({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadCounts() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('workouts')
+        .select('day_of_week, data')
+        .eq('user_name', user)
+      
+      if (data && !error) {
+        const newCounts = {}
+        data.forEach(row => {
+          newCounts[row.day_of_week] = row.data ? row.data.length : 0
+        })
+        setCounts(newCounts)
+      }
+      setLoading(false)
     }
-    return 0
-  }
+    loadCounts()
+  }, [user])
 
   return (
     <div className="app-container animate-fade-in">
@@ -74,15 +89,19 @@ function DaySelection({ user, onSelect, onBack }) {
       <h2 style={{ marginBottom: '1.5rem' }}>Seleziona il Giorno</h2>
 
       <div className="days-list">
-        {DAYS.map(day => (
-          <div key={day} className="day-card glass-panel" onClick={() => onSelect(day)}>
-            <div className="day-info">
-              <span>{day}</span>
-              <span className="day-count">{getExerciseCount(day)} Esercizi</span>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Sincronizzazione in corso...</div>
+        ) : (
+          DAYS.map(day => (
+            <div key={day} className="day-card glass-panel" onClick={() => onSelect(day)}>
+              <div className="day-info">
+                <span>{day}</span>
+                <span className="day-count">{counts[day] || 0} Esercizi</span>
+              </div>
+              <ChevronRight size={20} color="var(--text-muted)" />
             </div>
-            <ChevronRight size={20} color="var(--text-muted)" />
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   )
@@ -93,21 +112,56 @@ function DayTracker({ user, day, onBack }) {
   const [activeTab, setActiveTab] = useState('scheda') // 'scheda' | 'andamento'
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   
-  // Load for specific day
+  // Load for specific day from Supabase
   useEffect(() => {
-    const saved = localStorage.getItem(`workout_${user}_${day}`)
-    if (saved) {
-      setExercises(JSON.parse(saved))
-    } else {
-      setExercises([])
+    async function fetchExercises() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('workouts')
+        .select('data')
+        .eq('user_name', user)
+        .eq('day_of_week', day)
+        .single()
+      
+      if (data && data.data) {
+        setExercises(data.data)
+      } else {
+        setExercises([])
+      }
+      setLoading(false)
     }
+
+    fetchExercises()
   }, [user, day])
 
-  // Save to localStorage
-  const saveExercises = (newExercises) => {
+  // Save to Supabase
+  const saveExercises = async (newExercises) => {
     setExercises(newExercises)
-    localStorage.setItem(`workout_${user}_${day}`, JSON.stringify(newExercises))
+    setSaving(true)
+    
+    // Check if row already exists
+    const { data: existingData } = await supabase
+      .from('workouts')
+      .select('id')
+      .eq('user_name', user)
+      .eq('day_of_week', day)
+      .single()
+
+    if (existingData) {
+      await supabase
+        .from('workouts')
+        .update({ data: newExercises })
+        .eq('id', existingData.id)
+    } else {
+      await supabase
+        .from('workouts')
+        .insert([{ user_name: user, day_of_week: day, data: newExercises }])
+    }
+    
+    setSaving(false)
   }
 
   const handleAdd = (exerciseData) => {
@@ -173,6 +227,14 @@ function DayTracker({ user, day, onBack }) {
     (ex.history || []).map(h => ({ ...h, exerciseName: ex.name }))
   ).sort((a, b) => new Date(b.date) - new Date(a.date))
 
+  if (loading) {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: 'var(--text-muted)' }}>Caricamento scheda dal cloud in corso...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="app-container animate-fade-in">
       <header className="header" style={{ marginBottom: '1.5rem' }}>
@@ -182,6 +244,7 @@ function DayTracker({ user, day, onBack }) {
         </button>
         
         <div className="tracker-header">
+          {saving && <span style={{ fontSize: '0.8rem', color: 'var(--success)' }}>Salvataggio in corso...</span>}
           <div className="title">Scheda di {user.charAt(0).toUpperCase() + user.slice(1)}</div>
         </div>
       </header>
@@ -273,20 +336,20 @@ function DayTracker({ user, day, onBack }) {
                           </span>
                           <span className="stat-value">{ex.rest || '-'}</span>
                         </div>
-                        <div className="stat-item" style={{ flex: '1 1 100%' }}></div>
-                        <div className="stat-item" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
+                        <div className="stat-item full-width" style={{ display: 'none' }}></div>
+                        <div className="stat-item full-width" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
                           <span className="stat-label">
                             <Scale size={14} /> Peso
                           </span>
                           <span className="stat-value highlight">{ex.weight || '-'}</span>
                         </div>
-                        <div className="stat-item" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
+                        <div className="stat-item full-width" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
                           <span className="stat-label">
                             <History size={14} /> Reps Fatte
                           </span>
                           <span className="stat-value highlight">{ex.repsDone || '-'}</span>
                         </div>
-                        <div className="stat-item" style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
+                        <div className="stat-item full-width" style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
                           <span className="stat-label">
                             <Target size={14} color="var(--danger)" /> Obiettivo RIR
                           </span>
@@ -319,7 +382,7 @@ function DayTracker({ user, day, onBack }) {
                   </div>
                   <div className="history-content">
                     <h4 style={{ marginBottom: '0.5rem', color: 'var(--text-light)' }}>{h.exerciseName}</h4>
-                    <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-muted)' }}>
+                    <div className="history-metrics">
                       <div><strong>Peso:</strong> {h.weight || '-'}</div>
                       <div><strong>Reps:</strong> {h.repsDone || '-'}</div>
                       <div><strong>RIR:</strong> {h.rir || '-'}</div>
