@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { 
   Plus, Trash2, Edit2, ChevronLeft, Dumbbell, Timer, History, Save, X, 
-  ChevronRight, Activity, TrendingUp, Scale, ArrowUp, ArrowDown, Target 
+  ChevronRight, Activity, TrendingUp, Scale, ArrowUp, ArrowDown, Target,
+  ChevronDown, ChevronUp, FileText
 } from 'lucide-react'
 import { supabase } from './supabaseClient'
 import './App.css'
@@ -114,6 +115,11 @@ function DayTracker({ user, day, onBack }) {
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [expandedExercises, setExpandedExercises] = useState({})
+  
+  const toggleCollapse = (id) => {
+    setExpandedExercises(prev => ({...prev, [id]: !prev[id]}))
+  }
   
   // Load for specific day from Supabase
   useEffect(() => {
@@ -301,9 +307,14 @@ function DayTracker({ user, day, onBack }) {
                   ) : (
                     <>
                       <div className="exercise-header">
-                        <div className="exercise-name">
+                        <div 
+                          className="exercise-name" 
+                          onClick={() => toggleCollapse(ex.id)}
+                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}
+                        >
                           <Activity size={20} color="var(--primary)" />
                           {ex.name}
+                          {expandedExercises[ex.id] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                         </div>
                         <div className="actions">
                           {exercises.length > 1 && (
@@ -325,37 +336,47 @@ function DayTracker({ user, day, onBack }) {
                         </div>
                       </div>
                       
-                      <div className="exercise-stats">
-                        <div className="stat-item">
-                          <span className="stat-label">Serie & Reps</span>
-                          <span className="stat-value">{ex.sets} x {ex.repsRange}</span>
+                      {expandedExercises[ex.id] && (
+                        <div className="exercise-stats animate-fade-in">
+                          <div className="stat-item">
+                            <span className="stat-label">Serie & Reps</span>
+                            <span className="stat-value">{ex.sets} x {ex.repsRange}</span>
+                          </div>
+                          <div className="stat-item">
+                            <span className="stat-label">
+                              <Timer size={14} /> Recupero
+                            </span>
+                            <span className="stat-value">{ex.rest || '-'}</span>
+                          </div>
+                          <div className="stat-item full-width" style={{ display: 'none' }}></div>
+                          <div className="stat-item full-width" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
+                            <span className="stat-label">
+                              <Scale size={14} /> Peso
+                            </span>
+                            <span className="stat-value highlight">{ex.weight || '-'}</span>
+                          </div>
+                          <div className="stat-item full-width" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
+                            <span className="stat-label">
+                              <History size={14} /> Reps Fatte
+                            </span>
+                            <span className="stat-value highlight">{ex.repsDone || '-'}</span>
+                          </div>
+                          <div className="stat-item full-width" style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
+                            <span className="stat-label">
+                              <Target size={14} color="var(--danger)" /> Obiettivo RIR
+                            </span>
+                            <span className="stat-value" style={{ color: 'var(--danger)' }}>{ex.rir || '-'}</span>
+                          </div>
+                          {ex.notes && (
+                            <div className="stat-item full-width" style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.75rem 1rem', borderRadius: '8px', marginTop: '0.5rem' }}>
+                              <span className="stat-label">
+                                <FileText size={14} /> Note
+                              </span>
+                              <span className="stat-value" style={{ whiteSpace: 'pre-wrap', textAlign: 'left', fontSize: '0.9rem', marginTop: '0.25rem' }}>{ex.notes}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="stat-item">
-                          <span className="stat-label">
-                            <Timer size={14} /> Recupero
-                          </span>
-                          <span className="stat-value">{ex.rest || '-'}</span>
-                        </div>
-                        <div className="stat-item full-width" style={{ display: 'none' }}></div>
-                        <div className="stat-item full-width" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
-                          <span className="stat-label">
-                            <Scale size={14} /> Peso
-                          </span>
-                          <span className="stat-value highlight">{ex.weight || '-'}</span>
-                        </div>
-                        <div className="stat-item full-width" style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
-                          <span className="stat-label">
-                            <History size={14} /> Reps Fatte
-                          </span>
-                          <span className="stat-value highlight">{ex.repsDone || '-'}</span>
-                        </div>
-                        <div className="stat-item full-width" style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
-                          <span className="stat-label">
-                            <Target size={14} color="var(--danger)" /> Obiettivo RIR
-                          </span>
-                          <span className="stat-value" style={{ color: 'var(--danger)' }}>{ex.rir || '-'}</span>
-                        </div>
-                      </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -401,18 +422,45 @@ function DayTracker({ user, day, onBack }) {
 function ExerciseForm({ onSubmit, onCancel, initialData }) {
   const [formData, setFormData] = useState(initialData || {
     name: '',
-    sets: '',
+    sets: 3,
     repsRange: '',
     rest: '',
     weight: '',
     repsDone: '',
-    rir: ''
+    rir: '',
+    notes: ''
   })
+
+  const [setsCount, setSetsCount] = useState(() => {
+    const s = parseInt(initialData?.sets || 3);
+    return isNaN(s) || s < 1 ? 3 : (s > 5 ? 5 : s);
+  })
+
+  const [repsArray, setRepsArray] = useState(() => {
+    const defaultArr = Array(5).fill('');
+    if (initialData?.repsDone) {
+      const arr = initialData.repsDone.split(',').map(s => s.trim());
+      for (let i = 0; i < arr.length && i < 5; i++) defaultArr[i] = arr[i];
+    }
+    return defaultArr;
+  })
+
+  useEffect(() => {
+    setFormData(prev => ({...prev, sets: setsCount}))
+  }, [setsCount])
+
+  const handleRepChange = (index, value) => {
+    const newArr = [...repsArray]
+    newArr[index] = value
+    setRepsArray(newArr)
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!formData.name) return
-    onSubmit(formData)
+    const activeReps = repsArray.slice(0, setsCount)
+    const finalRepsDone = activeReps.some(r => r !== '') ? activeReps.join(',') : ''
+    onSubmit({ ...formData, repsDone: finalRepsDone })
   }
 
   return (
@@ -433,13 +481,11 @@ function ExerciseForm({ onSubmit, onCancel, initialData }) {
       <div className="grid-cols-2">
         <div className="input-group">
           <label>Serie</label>
-          <input 
-            type="number"
-            className="input-field" 
-            placeholder="es. 4"
-            value={formData.sets}
-            onChange={e => setFormData({...formData, sets: e.target.value})}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--glass-bg)', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
+            <button type="button" className="icon-btn" style={{ background: 'rgba(255,255,255,0.1)' }} onClick={() => setSetsCount(Math.max(1, setsCount - 1))}>-</button>
+            <span style={{ fontWeight: 'bold', fontSize: '1.1rem', minWidth: '1.5rem', textAlign: 'center', flex: 1 }}>{setsCount}</span>
+            <button type="button" className="icon-btn" style={{ background: 'rgba(255,255,255,0.1)' }} onClick={() => setSetsCount(Math.min(5, setsCount + 1))}>+</button>
+          </div>
         </div>
         <div className="input-group">
           <label>Range Ripetizioni</label>
@@ -475,27 +521,43 @@ function ExerciseForm({ onSubmit, onCancel, initialData }) {
 
       <div style={{ margin: '1rem 0', height: '1px', background: 'var(--glass-border)' }}></div>
 
-      <div className="grid-cols-2">
-        <div className="input-group">
-          <label style={{ color: 'var(--primary)' }}>Peso Attuale</label>
-          <input 
-            className="input-field" 
-            style={{ borderColor: 'rgba(99, 102, 241, 0.5)' }}
-            placeholder="es. 80kg"
-            value={formData.weight}
-            onChange={e => setFormData({...formData, weight: e.target.value})}
-          />
+      <div className="input-group">
+        <label style={{ color: 'var(--primary)' }}>Peso Attuale</label>
+        <input 
+          className="input-field" 
+          style={{ borderColor: 'rgba(99, 102, 241, 0.5)' }}
+          placeholder="es. 80kg"
+          value={formData.weight}
+          onChange={e => setFormData({...formData, weight: e.target.value})}
+        />
+      </div>
+      
+      <div className="input-group" style={{ marginTop: '1rem' }}>
+        <label style={{ color: 'var(--primary)' }}>Ripetizioni Fatte</label>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {Array.from({ length: setsCount }).map((_, i) => (
+            <div key={i} style={{ flex: '1 1 50px' }}>
+              <input 
+                className="input-field"
+                style={{ borderColor: 'rgba(99, 102, 241, 0.5)', textAlign: 'center', padding: '0.5rem' }}
+                placeholder={`S${i+1}`}
+                value={repsArray[i] || ''}
+                onChange={e => handleRepChange(i, e.target.value)}
+              />
+            </div>
+          ))}
         </div>
-        <div className="input-group">
-          <label style={{ color: 'var(--primary)' }}>Reps Fatte</label>
-          <input 
-            className="input-field" 
-            style={{ borderColor: 'rgba(99, 102, 241, 0.5)' }}
-            placeholder="es. 10,9,8,8"
-            value={formData.repsDone}
-            onChange={e => setFormData({...formData, repsDone: e.target.value})}
-          />
-        </div>
+      </div>
+      
+      <div className="input-group" style={{ marginTop: '1rem' }}>
+        <label>Note</label>
+        <textarea
+          className="input-field"
+          style={{ minHeight: '80px', resize: 'vertical' }}
+          placeholder="Aggiungi appunti, variazioni o sensazioni..."
+          value={formData.notes || ''}
+          onChange={e => setFormData({...formData, notes: e.target.value})}
+        />
       </div>
       {(initialData?.weight !== formData.weight || initialData?.repsDone !== formData.repsDone || initialData?.rir !== formData.rir) && initialData && (
         <p style={{ fontSize: '0.8rem', color: 'var(--success)', marginTop: '0.5rem' }}>
